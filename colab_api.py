@@ -120,14 +120,9 @@ def validate_wavs(
 ) -> ValidationReport:
     invalid: list[ValidationIssue] = []
     for path in wav_paths:
-        info = torchaudio.info(str(path))
-        if hasattr(info, "num_frames"):
-            sample_rate = info.sample_rate
-            channels = info.num_channels
-        else:
-            siginfo = info[0]
-            sample_rate = siginfo.rate
-            channels = siginfo.channels
+        info = _get_audio_info(path)
+        sample_rate = info.sample_rate
+        channels = info.channels
         if sample_rate != expected_sample_rate or channels != expected_channels:
             invalid.append(
                 ValidationIssue(
@@ -245,11 +240,41 @@ def run_hifigan_training(
 
 
 def _file_length(path: Path) -> int:
-    info = torchaudio.info(str(path))
-    if hasattr(info, "num_frames"):
-        return info.num_frames
-    siginfo = info[0]
-    return siginfo.length // siginfo.channels
+    info = _get_audio_info(path)
+    return info.length
+
+
+@dataclass(frozen=True)
+class _AudioInfo:
+    length: int
+    sample_rate: int
+    channels: int
+
+
+def _get_audio_info(path: Path) -> _AudioInfo:
+    if hasattr(torchaudio, "info"):
+        info = torchaudio.info(str(path))
+        if hasattr(info, "num_frames"):
+            return _AudioInfo(
+                length=info.num_frames,
+                sample_rate=info.sample_rate,
+                channels=info.num_channels,
+            )
+        siginfo = info[0]
+        return _AudioInfo(
+            length=siginfo.length // siginfo.channels,
+            sample_rate=siginfo.rate,
+            channels=siginfo.channels,
+        )
+    backend = getattr(torchaudio, "backend", None)
+    if backend and hasattr(backend, "sox_io_backend"):
+        info = backend.sox_io_backend.info(str(path))
+        return _AudioInfo(
+            length=info.num_frames,
+            sample_rate=info.sample_rate,
+            channels=info.num_channels,
+        )
+    raise RuntimeError("torchaudio does not provide an audio info backend.")
 
 
 def _write_split(
