@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence, Tuple
 
+import soundfile as sf
 import torchaudio
 
 
@@ -252,29 +253,15 @@ class _AudioInfo:
 
 
 def _get_audio_info(path: Path) -> _AudioInfo:
-    if hasattr(torchaudio, "info"):
-        info = torchaudio.info(str(path))
-        if hasattr(info, "num_frames"):
-            return _AudioInfo(
-                length=info.num_frames,
-                sample_rate=info.sample_rate,
-                channels=info.num_channels,
-            )
-        siginfo = info[0]
-        return _AudioInfo(
-            length=siginfo.length // siginfo.channels,
-            sample_rate=siginfo.rate,
-            channels=siginfo.channels,
-        )
-    backend = getattr(torchaudio, "backend", None)
-    if backend and hasattr(backend, "sox_io_backend"):
-        info = backend.sox_io_backend.info(str(path))
-        return _AudioInfo(
-            length=info.num_frames,
-            sample_rate=info.sample_rate,
-            channels=info.num_channels,
-        )
-    raise RuntimeError("torchaudio does not provide an audio info backend.")
+    try:
+        info = sf.info(str(path))
+    except Exception as exc:
+        raise RuntimeError(f"soundfile failed to read header: {path}") from exc
+    return _AudioInfo(
+        length=info.frames,
+        sample_rate=info.samplerate,
+        channels=info.channels,
+    )
 
 
 def _write_split(
