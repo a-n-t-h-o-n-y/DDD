@@ -41,15 +41,60 @@ class EgsPaths:
     test_noisy_dir: Optional[str]
 
 
-def download_if_missing(url: str, dest_path: Path) -> Path:
+def download_if_missing(
+    url: str,
+    dest_path: Path,
+    verify_zip: bool = True,
+    overwrite_invalid: bool = True,
+) -> Path:
     if not url:
         raise ValueError("url must be a non-empty string.")
     if dest_path.exists():
-        return dest_path
+        if verify_zip and not zipfile.is_zipfile(dest_path):
+            if overwrite_invalid:
+                dest_path.unlink()
+            else:
+                raise ValueError(
+                    f"Existing file is not a zip: {dest_path}"
+                )
+        else:
+            return dest_path
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     with urllib.request.urlopen(url) as response:
         with open(dest_path, "wb") as handle:
             shutil.copyfileobj(response, handle)
+    if verify_zip and not zipfile.is_zipfile(dest_path):
+        raise ValueError(f"Downloaded file is not a zip: {dest_path}")
+    return dest_path
+
+
+def download_with_megadl(
+    url: str,
+    dest_path: Path,
+    verify_zip: bool = True,
+    overwrite_invalid: bool = True,
+) -> Path:
+    if not url:
+        raise ValueError("url must be a non-empty string.")
+    if shutil.which("megadl") is None:
+        raise RuntimeError(
+            "megadl is not available. Install megatools first "
+            "(e.g., apt-get install -y megatools)."
+        )
+    if dest_path.exists():
+        if verify_zip and not zipfile.is_zipfile(dest_path):
+            if overwrite_invalid:
+                dest_path.unlink()
+            else:
+                raise ValueError(
+                    f"Existing file is not a zip: {dest_path}"
+                )
+        else:
+            return dest_path
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.check_call(["megadl", "--path", str(dest_path), url])
+    if verify_zip and not zipfile.is_zipfile(dest_path):
+        raise ValueError(f"Downloaded file is not a zip: {dest_path}")
     return dest_path
 
 
